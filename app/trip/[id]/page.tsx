@@ -44,6 +44,7 @@ type RoutePoint = {
 };
 
 type Day = {
+  id?: string;
   day: number;
   date: string;
   title: string;
@@ -125,6 +126,50 @@ const OLD_DEFAULT_PLACE_IDS = new Set([
   "monument-valley",
   "forrest-gump",
 ]);
+
+// ============================================================
+// ERROR HELPER
+// ============================================================
+
+function logSupabaseError(
+  label: string,
+  error: unknown
+) {
+  console.error(label, error);
+
+  try {
+    console.error(
+      `${label} JSON:`,
+      JSON.stringify(
+        error,
+        Object.getOwnPropertyNames(
+          error as object
+        )
+      )
+    );
+  } catch {
+    console.error(
+      `${label} nie udało się zamienić błędu na JSON.`
+    );
+  }
+}
+
+// ============================================================
+// UUID HELPER
+// ============================================================
+
+function createUuid(): string {
+  if (
+    typeof crypto !== "undefined" &&
+    typeof crypto.randomUUID === "function"
+  ) {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random()
+    .toString(16)
+    .slice(2)}`;
+}
 
 // ============================================================
 // DATE HELPERS
@@ -226,6 +271,8 @@ function generateDaysFromDates(
       );
 
     result.push({
+      id: existing?.id,
+
       day: dayNumber,
 
       date:
@@ -484,7 +531,7 @@ export default function TripPage() {
       }
 
       if (tripError) {
-        console.error(
+        logSupabaseError(
           "Błąd pobierania podróży:",
           tripError
         );
@@ -596,7 +643,7 @@ export default function TripPage() {
       }
 
       if (daysError) {
-        console.error(
+        logSupabaseError(
           "Błąd pobierania dni:",
           daysError
         );
@@ -655,7 +702,7 @@ export default function TripPage() {
         }
 
         if (placesError) {
-          console.error(
+          logSupabaseError(
             "Błąd pobierania miejsc:",
             placesError
           );
@@ -711,7 +758,7 @@ export default function TripPage() {
         }
 
         if (routeError) {
-          console.error(
+          logSupabaseError(
             "Błąd pobierania punktów trasy:",
             routeError
           );
@@ -818,6 +865,9 @@ export default function TripPage() {
                 );
 
             return {
+              id:
+                supabaseDay.id,
+
               day:
                 dayNumber,
 
@@ -999,11 +1049,7 @@ export default function TripPage() {
               const newSelectedPlace: Place =
                 {
                   id:
-                    typeof crypto !==
-                      "undefined" &&
-                    crypto.randomUUID
-                      ? crypto.randomUUID()
-                      : `${Date.now()}`,
+                    createUuid(),
 
                   name,
 
@@ -1025,7 +1071,7 @@ export default function TripPage() {
               autocomplete.value =
                 "";
             } catch (error) {
-              console.error(
+              logSupabaseError(
                 "Błąd wyboru miejsca:",
                 error
               );
@@ -1033,7 +1079,7 @@ export default function TripPage() {
           }
         );
       } catch (error) {
-        console.error(
+        logSupabaseError(
           "Nie udało się uruchomić Google Places:",
           error
         );
@@ -1177,6 +1223,209 @@ export default function TripPage() {
     0;
 
   // ==========================================================
+  // GET REAL SUPABASE DAY ID
+  // ==========================================================
+
+  async function getOrCreateDayId(
+    dayNumber: number
+  ): Promise<string | null> {
+    if (!tripId) {
+      return null;
+    }
+
+    const localDay =
+      days.find(
+        (day) =>
+          day.day ===
+          dayNumber
+      );
+
+    // --------------------------------------------------------
+    // 1. Mamy już prawdziwe ID
+    // --------------------------------------------------------
+
+    if (localDay?.id) {
+      return localDay.id;
+    }
+
+    // --------------------------------------------------------
+    // 2. Sprawdź Supabase
+    // --------------------------------------------------------
+
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from("trip_days")
+        .select("id")
+        .eq(
+          "trip_id",
+          tripId
+        )
+        .eq(
+          "day",
+          dayNumber
+        )
+        .maybeSingle();
+
+    if (error) {
+      logSupabaseError(
+        "Błąd pobierania ID dnia:",
+        error
+      );
+
+      return null;
+    }
+
+    if (data?.id) {
+      const realDayId =
+        data.id;
+
+      setDays(
+        (previousDays) =>
+          previousDays.map(
+            (day) =>
+              day.day ===
+              dayNumber
+                ? {
+                    ...day,
+                    id: realDayId,
+                  }
+                : day
+          )
+      );
+
+      return realDayId;
+    }
+
+    // --------------------------------------------------------
+    // 3. Dnia nie ma - utwórz go
+    //
+    // WAŻNE:
+    // Generujemy ID sami i NIE robimy .select()
+    // po insert.
+    // --------------------------------------------------------
+
+    const newDayId =
+      createUuid();
+
+    const tripStartDate =
+      trip?.startDate
+        ? parseLocalDate(
+            trip.startDate
+          )
+        : null;
+
+    let isoDate:
+      | string
+      | null =
+      null;
+
+    if (tripStartDate) {
+      const date =
+        new Date(
+          tripStartDate
+        );
+
+      date.setDate(
+        date.getDate() +
+          dayNumber -
+          1
+      );
+
+      const year =
+        date.getFullYear();
+
+      const month =
+        String(
+          date.getMonth() + 1
+        ).padStart(2, "0");
+
+      const day =
+        String(
+          date.getDate()
+        ).padStart(2, "0");
+
+      isoDate =
+        `${year}-${month}-${day}`;
+    }
+
+    const {
+      error:
+        insertError,
+    } =
+      await supabase
+        .from("trip_days")
+        .insert({
+          id:
+            newDayId,
+
+          trip_id:
+            tripId,
+
+          day:
+            dayNumber,
+
+          date:
+            isoDate,
+
+          title:
+            localDay?.title ??
+            `Dzień ${dayNumber}`,
+        });
+
+    if (insertError) {
+      logSupabaseError(
+        "Błąd tworzenia dnia:",
+        insertError
+      );
+
+      console.error(
+        "Dane próby utworzenia dnia:",
+        {
+          id: newDayId,
+          trip_id: tripId,
+          day: dayNumber,
+          date: isoDate,
+          title:
+            localDay?.title ??
+            `Dzień ${dayNumber}`,
+        }
+      );
+
+      alert(
+        `Nie udało się utworzyć dnia podróży.\n\n${
+          insertError.message ??
+          "Nieznany błąd Supabase."
+        }`
+      );
+
+      return null;
+    }
+
+    // --------------------------------------------------------
+    // 4. Zapisz prawdziwe ID lokalnie
+    // --------------------------------------------------------
+
+    setDays(
+      (previousDays) =>
+        previousDays.map(
+          (day) =>
+            day.day ===
+            dayNumber
+              ? {
+                  ...day,
+                  id: newDayId,
+                }
+              : day
+        )
+    );
+
+    return newDayId;
+  }
+
+  // ==========================================================
   // SAVE TRIP STATS
   // ==========================================================
 
@@ -1216,7 +1465,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd zapisu statystyk:",
         error
       );
@@ -1264,7 +1513,17 @@ export default function TripPage() {
     }
 
     const dayId =
-      `${tripId}-day-${dayNumber}`;
+      await getOrCreateDayId(
+        dayNumber
+      );
+
+    if (!dayId) {
+      console.error(
+        "Nie udało się znaleźć ID dnia przy zapisie kolejności."
+      );
+
+      return;
+    }
 
     const updates =
       places.map(
@@ -1302,7 +1561,7 @@ export default function TripPage() {
     if (
       failed?.error
     ) {
-      console.error(
+      logSupabaseError(
         "Błąd zapisu kolejności miejsc:",
         failed.error
       );
@@ -1355,7 +1614,7 @@ export default function TripPage() {
                     ? routePoints[
                         existingIndex
                       ].id
-                    : `${dayNumber}-${segmentIndex}`,
+                    : createUuid(),
 
                 segmentIndex,
 
@@ -1407,7 +1666,17 @@ export default function TripPage() {
     }
   ) {
     const dayId =
-      `${tripId}-day-${dayNumber}`;
+      await getOrCreateDayId(
+        dayNumber
+      );
+
+    if (!dayId) {
+      console.error(
+        "Nie udało się znaleźć ID dnia przy zapisie punktu trasy."
+      );
+
+      return;
+    }
 
     const existingDay =
       days.find(
@@ -1425,7 +1694,7 @@ export default function TripPage() {
 
     const pointId =
       existingPoint?.id ??
-      `${tripId}-route-${dayNumber}-${segmentIndex}`;
+      createUuid();
 
     const {
       error,
@@ -1436,17 +1705,22 @@ export default function TripPage() {
         )
         .upsert({
           id: pointId,
-          day_id: dayId,
+
+          day_id:
+            dayId,
+
           point_order:
             segmentIndex,
+
           lat:
             point.lat,
+
           lng:
             point.lng,
         });
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd zapisu punktu trasy:",
         error
       );
@@ -1506,7 +1780,17 @@ export default function TripPage() {
     segmentIndex: number
   ) {
     const dayId =
-      `${tripId}-day-${dayNumber}`;
+      await getOrCreateDayId(
+        dayNumber
+      );
+
+    if (!dayId) {
+      console.error(
+        "Nie udało się znaleźć ID dnia przy usuwaniu punktu trasy."
+      );
+
+      return;
+    }
 
     const {
       error,
@@ -1526,7 +1810,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd usuwania punktu trasy:",
         error
       );
@@ -1757,7 +2041,17 @@ export default function TripPage() {
     dayNumber: number
   ) {
     const dayId =
-      `${tripId}-day-${dayNumber}`;
+      await getOrCreateDayId(
+        dayNumber
+      );
+
+    if (!dayId) {
+      console.error(
+        "Nie udało się znaleźć ID dnia przy czyszczeniu punktów trasy."
+      );
+
+      return;
+    }
 
     const {
       error,
@@ -1773,7 +2067,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd czyszczenia punktów trasy:",
         error
       );
@@ -1872,7 +2166,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd zmiany aktywności miejsca:",
         error
       );
@@ -1963,18 +2257,36 @@ export default function TripPage() {
         enabled: true,
       };
 
+    // --------------------------------------------------------
+    // PRAWDZIWE ID DNIA
+    // --------------------------------------------------------
+
     const dayId =
-      `${tripId}-day-${currentDay.day}`;
+      await getOrCreateDayId(
+        currentDay.day
+      );
+
+    if (!dayId) {
+      console.error(
+        "Nie udało się znaleźć ID dnia dla dodawanego miejsca."
+      );
+
+      return;
+    }
 
     const placeOrder =
       currentDay.places.length;
+
+    // --------------------------------------------------------
+    // INSERT PLACE
+    // --------------------------------------------------------
 
     const {
       error,
     } =
       await supabase
         .from("trip_places")
-        .upsert({
+        .insert({
           id:
             placeToAdd.id,
 
@@ -2009,17 +2321,52 @@ export default function TripPage() {
         });
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd dodawania miejsca:",
         error
       );
 
+      console.error(
+        "Dane miejsca:",
+        {
+          id:
+            placeToAdd.id,
+          day_id:
+            dayId,
+          place_id:
+            placeToAdd.id,
+          name:
+            placeToAdd.name,
+          address:
+            placeToAdd.address ??
+            null,
+          lat:
+            placeToAdd.lat,
+          lng:
+            placeToAdd.lng,
+          place_order:
+            placeOrder,
+          visit_time:
+            newPlaceTime ||
+            null,
+          enabled:
+            true,
+        }
+      );
+
       alert(
-        "Nie udało się zapisać miejsca."
+        `Nie udało się zapisać miejsca.\n\n${
+          error.message ??
+          "Nieznany błąd Supabase."
+        }`
       );
 
       return;
     }
+
+    // --------------------------------------------------------
+    // UPDATE UI
+    // --------------------------------------------------------
 
     setDays(
       (
@@ -2090,7 +2437,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd usuwania miejsca:",
         error
       );
@@ -2165,7 +2512,7 @@ export default function TripPage() {
         );
 
     if (error) {
-      console.error(
+      logSupabaseError(
         "Błąd zapisu godziny:",
         error
       );
@@ -3138,6 +3485,7 @@ export default function TripPage() {
 
             <p className="mt-1 text-2xl font-bold text-slate-900">
               {totalActivePlaces}
+
               {totalPlaces !==
                 totalActivePlaces && (
                 <span className="ml-2 text-sm font-normal text-slate-400">
