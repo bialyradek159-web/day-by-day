@@ -33,6 +33,7 @@ type Place = {
   lat: number;
   lng: number;
   time?: string;
+  enabled: boolean;
 };
 
 type RoutePoint = {
@@ -95,6 +96,7 @@ type SupabasePlace = {
   lng: number;
   place_order: number;
   visit_time: string | null;
+  enabled: boolean | null;
 };
 
 type SupabaseRoutePoint = {
@@ -634,7 +636,7 @@ export default function TripPage() {
         } = await supabase
           .from("trip_places")
           .select(
-            "id, day_id, place_id, name, address, lat, lng, place_order, visit_time"
+            "id, day_id, place_id, name, address, lat, lng, place_order, visit_time, enabled"
           )
           .in(
             "day_id",
@@ -776,6 +778,10 @@ export default function TripPage() {
                     time:
                       place.visit_time ??
                       undefined,
+
+                    enabled:
+                      place.enabled !==
+                      false,
                   })
                 );
 
@@ -1008,6 +1014,8 @@ export default function TripPage() {
 
                   lng:
                     place.location.lng(),
+
+                  enabled: true,
                 };
 
               setSelectedPlace(
@@ -1068,6 +1076,39 @@ export default function TripPage() {
     ]);
 
   // ==========================================================
+  // ACTIVE PLACES
+  // ==========================================================
+
+  const activePlaces =
+    useMemo(() => {
+      return (
+        currentDay?.places.filter(
+          (place) =>
+            place.enabled
+        ) ?? []
+      );
+    }, [currentDay]);
+
+  // ==========================================================
+  // MAP DAYS
+  // ==========================================================
+
+  const mapDays =
+    useMemo(() => {
+      return days.map(
+        (day) => ({
+          ...day,
+
+          places:
+            day.places.filter(
+              (place) =>
+                place.enabled
+            ),
+        })
+      );
+    }, [days]);
+
+  // ==========================================================
   // MAP PLACES
   // ==========================================================
 
@@ -1076,18 +1117,18 @@ export default function TripPage() {
       if (showAllDays) {
         return days.flatMap(
           (day) =>
-            day.places
+            day.places.filter(
+              (place) =>
+                place.enabled
+            )
         );
       }
 
-      return (
-        currentDay?.places ??
-        []
-      );
+      return activePlaces;
     }, [
       showAllDays,
       days,
-      currentDay,
+      activePlaces,
     ]);
 
   // ==========================================================
@@ -1100,6 +1141,23 @@ export default function TripPage() {
         (sum, day) =>
           sum +
           day.places.length,
+        0
+      );
+    }, [days]);
+
+  // ==========================================================
+  // TOTAL ACTIVE PLACES
+  // ==========================================================
+
+  const totalActivePlaces =
+    useMemo(() => {
+      return days.reduce(
+        (sum, day) =>
+          sum +
+          day.places.filter(
+            (place) =>
+              place.enabled
+          ).length,
         0
       );
     }, [days]);
@@ -1504,6 +1562,50 @@ export default function TripPage() {
               return day;
             }
 
+            const activePlaces =
+              day.places.filter(
+                (place) =>
+                  place.enabled
+              );
+
+            const fromPlace =
+              activePlaces[
+                fromIndex
+              ];
+
+            const toPlace =
+              activePlaces[
+                toIndex
+              ];
+
+            if (
+              !fromPlace ||
+              !toPlace
+            ) {
+              return day;
+            }
+
+            const fromFullIndex =
+              day.places.findIndex(
+                (place) =>
+                  place.id ===
+                  fromPlace.id
+              );
+
+            const toFullIndex =
+              day.places.findIndex(
+                (place) =>
+                  place.id ===
+                  toPlace.id
+              );
+
+            if (
+              fromFullIndex < 0 ||
+              toFullIndex < 0
+            ) {
+              return day;
+            }
+
             const places = [
               ...day.places,
             ];
@@ -1512,7 +1614,7 @@ export default function TripPage() {
               movedPlace,
             ] =
               places.splice(
-                fromIndex,
+                fromFullIndex,
                 1
               );
 
@@ -1522,8 +1624,18 @@ export default function TripPage() {
               return day;
             }
 
+            let insertIndex =
+              toFullIndex;
+
+            if (
+              fromFullIndex <
+              toFullIndex
+            ) {
+              insertIndex--;
+            }
+
             places.splice(
-              toIndex,
+              insertIndex,
               0,
               movedPlace
             );
@@ -1552,31 +1664,83 @@ export default function TripPage() {
       );
 
     if (changedDay) {
-      const places = [
-        ...changedDay.places,
-      ];
-
-      const [
-        movedPlace,
-      ] =
-        places.splice(
-          fromIndex,
-          1
+      const activePlaces =
+        changedDay.places.filter(
+          (place) =>
+            place.enabled
         );
+
+      const fromPlace =
+        activePlaces[
+          fromIndex
+        ];
+
+      const toPlace =
+        activePlaces[
+          toIndex
+        ];
 
       if (
-        movedPlace
+        fromPlace &&
+        toPlace
       ) {
-        places.splice(
-          toIndex,
-          0,
-          movedPlace
-        );
+        const places = [
+          ...changedDay.places,
+        ];
 
-        void savePlaceOrder(
-          dayNumber,
-          places
-        );
+        const fromFullIndex =
+          places.findIndex(
+            (place) =>
+              place.id ===
+              fromPlace.id
+          );
+
+        const toFullIndex =
+          places.findIndex(
+            (place) =>
+              place.id ===
+              toPlace.id
+          );
+
+        if (
+          fromFullIndex >=
+            0 &&
+          toFullIndex >=
+            0
+        ) {
+          const [
+            movedPlace,
+          ] =
+            places.splice(
+              fromFullIndex,
+              1
+            );
+
+          if (
+            movedPlace
+          ) {
+            let insertIndex =
+              toFullIndex;
+
+            if (
+              fromFullIndex <
+              toFullIndex
+            ) {
+              insertIndex--;
+            }
+
+            places.splice(
+              insertIndex,
+              0,
+              movedPlace
+            );
+
+            void savePlaceOrder(
+              dayNumber,
+              places
+            );
+          }
+        }
       }
     }
 
@@ -1617,6 +1781,147 @@ export default function TripPage() {
   }
 
   // ==========================================================
+  // TOGGLE PLACE
+  // ==========================================================
+
+  async function togglePlaceEnabled(
+    dayNumber: number,
+    placeId: string
+  ) {
+    const day =
+      days.find(
+        (item) =>
+          item.day ===
+          dayNumber
+      );
+
+    const place =
+      day?.places.find(
+        (item) =>
+          item.id ===
+          placeId
+      );
+
+    if (!day || !place) {
+      return;
+    }
+
+    const nextEnabled =
+      !place.enabled;
+
+    // --------------------------------------------------------
+    // OPTIMISTIC UI
+    // --------------------------------------------------------
+
+    setDays(
+      (
+        previousDays
+      ) =>
+        previousDays.map(
+          (item) => {
+            if (
+              item.day !==
+              dayNumber
+            ) {
+              return item;
+            }
+
+            return {
+              ...item,
+
+              places:
+                item.places.map(
+                  (currentPlace) =>
+                    currentPlace.id ===
+                    placeId
+                      ? {
+                          ...currentPlace,
+                          enabled:
+                            nextEnabled,
+                        }
+                      : currentPlace
+                ),
+
+              routePoints:
+                [],
+            };
+          }
+        )
+    );
+
+    setRouteStats(
+      null
+    );
+
+    // --------------------------------------------------------
+    // SAVE
+    // --------------------------------------------------------
+
+    const {
+      error,
+    } =
+      await supabase
+        .from("trip_places")
+        .update({
+          enabled:
+            nextEnabled,
+        })
+        .eq(
+          "id",
+          placeId
+        );
+
+    if (error) {
+      console.error(
+        "Błąd zmiany aktywności miejsca:",
+        error
+      );
+
+      // Rollback
+      setDays(
+        (
+          previousDays
+        ) =>
+          previousDays.map(
+            (item) => {
+              if (
+                item.day !==
+                dayNumber
+              ) {
+                return item;
+              }
+
+              return {
+                ...item,
+
+                places:
+                  item.places.map(
+                    (
+                      currentPlace
+                    ) =>
+                      currentPlace.id ===
+                      placeId
+                        ? {
+                            ...currentPlace,
+                            enabled:
+                              place.enabled,
+                          }
+                        : currentPlace
+                  ),
+              };
+            }
+          )
+      );
+
+      return;
+    }
+
+    await clearSupabaseRoutePoints(
+      dayNumber
+    );
+  }
+
+  // ==========================================================
   // OPEN ADD PLACE
   // ==========================================================
 
@@ -1654,6 +1959,8 @@ export default function TripPage() {
         time:
           newPlaceTime ||
           undefined,
+
+        enabled: true,
       };
 
     const dayId =
@@ -1696,6 +2003,9 @@ export default function TripPage() {
           visit_time:
             newPlaceTime ||
             null,
+
+          enabled:
+            true,
         });
 
     if (error) {
@@ -2328,10 +2638,18 @@ export default function TripPage() {
                                 key={
                                   place.id
                                 }
-                                className="flex items-center gap-3 rounded-lg bg-slate-50 p-3"
+                                className={`flex items-center gap-3 rounded-lg p-3 ${
+                                  place.enabled
+                                    ? "bg-slate-50"
+                                    : "bg-slate-50 opacity-50"
+                                }`}
                               >
 
-                                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-700">
+                                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold ${
+                                  place.enabled
+                                    ? "bg-blue-100 text-blue-700"
+                                    : "bg-slate-200 text-slate-500"
+                                }`}>
                                   {
                                     index +
                                     1
@@ -2340,7 +2658,11 @@ export default function TripPage() {
 
                                 <div>
 
-                                  <p className="text-sm font-medium text-slate-800">
+                                  <p className={`text-sm font-medium ${
+                                    place.enabled
+                                      ? "text-slate-800"
+                                      : "text-slate-500"
+                                  }`}>
                                     {
                                       place.name
                                     }
@@ -2352,6 +2674,12 @@ export default function TripPage() {
                                       {
                                         place.time
                                       }
+                                    </p>
+                                  )}
+
+                                  {!place.enabled && (
+                                    <p className="mt-0.5 text-xs font-medium text-amber-600">
+                                      Opcjonalne
                                     </p>
                                   )}
 
@@ -2411,22 +2739,34 @@ export default function TripPage() {
                     index
                   ) => {
 
-                    const nextPlace =
-                      currentDay
-                        .places[
-                        index + 1
+                    const activeIndex =
+                      activePlaces.findIndex(
+                        (
+                          activePlace
+                        ) =>
+                          activePlace.id ===
+                          place.id
+                      );
+
+                    const nextActivePlace =
+                      activePlaces[
+                        activeIndex +
+                          1
                       ];
 
                     const segment =
-                      routeStats?.segments.find(
-                        (
-                          item
-                        ) =>
-                          item.from ===
-                            place.name &&
-                          item.to ===
-                            nextPlace?.name
-                      );
+                      place.enabled &&
+                      nextActivePlace
+                        ? routeStats?.segments.find(
+                            (
+                              item
+                            ) =>
+                              item.from ===
+                                place.name &&
+                              item.to ===
+                                nextActivePlace.name
+                          )
+                        : undefined;
 
                     return (
                       <div
@@ -2438,8 +2778,11 @@ export default function TripPage() {
                         {/* PLACE */}
 
                         <div
-                          draggable
+                          draggable={
+                            place.enabled
+                          }
                           onDragStart={() =>
+                            place.enabled &&
                             handleDragStart(
                               place.id
                             )
@@ -2450,15 +2793,24 @@ export default function TripPage() {
                             event.preventDefault()
                           }
                           onDrop={() =>
+                            place.enabled &&
                             handleDragEnd(
                               currentDay.day,
-                              index
+                              activeIndex
                             )
                           }
-                          className="group flex cursor-grab items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 transition hover:border-slate-300 hover:shadow-sm active:cursor-grabbing"
+                          className={`group flex items-start gap-3 rounded-xl border p-4 transition ${
+                            place.enabled
+                              ? "cursor-grab border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm active:cursor-grabbing"
+                              : "border-slate-200 bg-slate-50 opacity-60"
+                          }`}
                         >
 
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-100 font-bold text-blue-700">
+                          <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full font-bold ${
+                            place.enabled
+                              ? "bg-blue-100 text-blue-700"
+                              : "bg-slate-200 text-slate-500"
+                          }`}>
                             {
                               index +
                               1
@@ -2471,7 +2823,11 @@ export default function TripPage() {
 
                               <div className="min-w-0">
 
-                                <p className="font-semibold text-slate-900">
+                                <p className={`font-semibold ${
+                                  place.enabled
+                                    ? "text-slate-900"
+                                    : "text-slate-500"
+                                }`}>
                                   {
                                     place.name
                                   }
@@ -2485,20 +2841,53 @@ export default function TripPage() {
                                   </p>
                                 )}
 
+                                {!place.enabled && (
+                                  <p className="mt-1 text-xs font-medium text-amber-600">
+                                    Opcjonalne — nie jest uwzględniane w trasie
+                                  </p>
+                                )}
+
                               </div>
 
-                              <button
-                                onClick={() =>
-                                  deletePlace(
-                                    currentDay.day,
-                                    place.id
-                                  )
-                                }
-                                className="opacity-0 text-xl text-slate-400 transition hover:text-red-500 group-hover:opacity-100"
-                                title="Usuń miejsce"
-                              >
-                                ×
-                              </button>
+                              <div className="flex shrink-0 items-center gap-2">
+
+                                <button
+                                  onClick={() =>
+                                    togglePlaceEnabled(
+                                      currentDay.day,
+                                      place.id
+                                    )
+                                  }
+                                  className={`rounded-lg px-2.5 py-1.5 text-xs font-medium transition ${
+                                    place.enabled
+                                      ? "bg-slate-100 text-slate-600 hover:bg-amber-50 hover:text-amber-700"
+                                      : "bg-blue-50 text-blue-700 hover:bg-blue-100"
+                                  }`}
+                                  title={
+                                    place.enabled
+                                      ? "Wyłącz z trasy"
+                                      : "Włącz do trasy"
+                                  }
+                                >
+                                  {place.enabled
+                                    ? "Opcjonalne"
+                                    : "Włącz"}
+                                </button>
+
+                                <button
+                                  onClick={() =>
+                                    deletePlace(
+                                      currentDay.day,
+                                      place.id
+                                    )
+                                  }
+                                  className="opacity-0 text-xl text-slate-400 transition hover:text-red-500 group-hover:opacity-100"
+                                  title="Usuń miejsce"
+                                >
+                                  ×
+                                </button>
+
+                              </div>
 
                             </div>
 
@@ -2519,9 +2908,10 @@ export default function TripPage() {
 
                         </div>
 
-                        {/* ROUTE TO NEXT PLACE */}
+                        {/* ROUTE TO NEXT ACTIVE PLACE */}
 
-                        {nextPlace && (
+                        {place.enabled &&
+                          nextActivePlace && (
 
                           <div className="ml-4 flex items-stretch gap-3">
 
@@ -2575,7 +2965,7 @@ export default function TripPage() {
                                   }{" "}
                                   →{" "}
                                   {
-                                    nextPlace.name
+                                    nextActivePlace.name
                                   }
                                 </p>
 
@@ -2636,6 +3026,9 @@ export default function TripPage() {
                       )} • ${formatDuration(
                         routeStats.durationMillis
                       )}`
+                    : activePlaces.length <
+                      2
+                    ? "Włącz co najmniej dwa miejsca, aby obliczyć trasę."
                     : "Trasa zostanie obliczona automatycznie."}
 
                 </p>
@@ -2658,7 +3051,7 @@ export default function TripPage() {
             }
 
             allDays={
-              days
+              mapDays
             }
 
             showAllDays={
@@ -2744,7 +3137,14 @@ export default function TripPage() {
             </p>
 
             <p className="mt-1 text-2xl font-bold text-slate-900">
-              {totalPlaces}
+              {totalActivePlaces}
+              {totalPlaces !==
+                totalActivePlaces && (
+                <span className="ml-2 text-sm font-normal text-slate-400">
+                  /{" "}
+                  {totalPlaces}
+                </span>
+              )}
             </p>
 
           </div>
