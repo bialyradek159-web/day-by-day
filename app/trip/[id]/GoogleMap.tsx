@@ -108,7 +108,7 @@ const DAY_COLORS = [
   "#dc2626",
   "#0891b2",
   "#ca8a04",
-  "#db2777",
+  "#db2778",
 ];
 
 const DEFAULT_CENTER = {
@@ -656,7 +656,6 @@ export default function GoogleMap({
               content:
                 pin.element,
 
-              // MARKER MOŻNA PRZECIĄGAĆ
               gmpDraggable:
                 !showAllDays,
             });
@@ -775,7 +774,7 @@ export default function GoogleMap({
 
                   if (
                     distance <
-                      closestDistance
+                    closestDistance
                   ) {
                     closestDistance =
                       distance;
@@ -987,16 +986,10 @@ export default function GoogleMap({
                     route.path.map(
                       (point) => ({
                         lat:
-                          typeof point.lat ===
-                          "function"
-                            ? point.lat()
-                            : point.lat,
+                          point.lat,
 
                         lng:
-                          typeof point.lng ===
-                          "function"
-                            ? point.lng()
-                            : point.lng,
+                          point.lng,
                       })
                     ),
 
@@ -1108,16 +1101,10 @@ export default function GoogleMap({
                 route.path
               ) {
                 const lat =
-                  typeof point.lat ===
-                  "function"
-                    ? point.lat()
-                    : point.lat;
+                  point.lat;
 
                 const lng =
-                  typeof point.lng ===
-                  "function"
-                    ? point.lng()
-                    : point.lng;
+                  point.lng;
 
                 if (
                   Number.isFinite(lat) &&
