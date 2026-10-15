@@ -1635,21 +1635,14 @@ export default function GoogleMap({
         img.src = `https://flagcdn.com/w80/${country.code.toLowerCase()}.png`;
         img.alt = country.name;
         img.style.cssText =
-          "width:34px;height:auto;border-radius:3px;" +
+          "width:42px;height:auto;border-radius:3px;" +
           "box-shadow:0 1px 4px rgba(0,0,0,.45);";
         img.onerror = () => {
           img.style.display = "none";
         };
         el.appendChild(img);
 
-        const label = document.createElement("div");
-        label.textContent = country.name.toUpperCase();
-        label.style.cssText =
-          "font:700 13px system-ui,sans-serif;letter-spacing:.08em;" +
-          "color:#ea580c;white-space:nowrap;" +
-          "text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff," +
-          "-1px 1px 0 #fff,1px 1px 0 #fff;";
-        el.appendChild(label);
+        
 
         const marker = new AdvancedMarkerElement({
           map,
