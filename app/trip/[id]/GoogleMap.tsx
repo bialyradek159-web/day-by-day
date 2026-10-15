@@ -119,6 +119,26 @@ type GoogleMapProps = {
 // CONSTANTS
 // ============================================================
 
+type RouteLike = {
+  distanceMeters?: number | null;
+  durationMillis?: number | null;
+  path?: { lat: number; lng: number }[] | null;
+  createPolylines: (options: {
+    polylineOptions: google.maps.PolylineOptions;
+  }) => google.maps.Polyline[];
+};
+
+type CachedRoute = {
+  distanceMeters: number;
+  durationMillis: number;
+  path: { lat: number; lng: number }[];
+};
+
+const routeCache = new Map<string, CachedRoute>();
+
+let routeApiCalls = 0;
+
+const MAX_ROUTE_API_CALLS = 150;
 const DAY_COLORS = [
   "#2563eb",
   "#16a34a",
@@ -925,28 +945,65 @@ export default function GoogleMap({
                 ];
             }
 
-            const result =
-              await Route.computeRoutes(
-                request
-              );
+                        const cacheKey = [
+              segment.from.lat.toFixed(5),
+              segment.from.lng.toFixed(5),
+              segment.to.lat.toFixed(5),
+              segment.to.lng.toFixed(5),
+              segment.routePoint
+                ? `${segment.routePoint.lat.toFixed(5)},${segment.routePoint.lng.toFixed(5)}`
+                : "-",
+            ].join("|");
 
-            if (
-              cancelled ||
-              currentCalculationId !==
-                calculationIdRef.current
-            ) {
-              return;
+            let route: RouteLike;
+
+            const cached = routeCache.get(cacheKey);
+
+            if (cached) {
+              route = {
+                distanceMeters: cached.distanceMeters,
+                durationMillis: cached.durationMillis,
+                path: cached.path,
+                createPolylines: () => [],
+              };
+            } else {
+              if (routeApiCalls >= MAX_ROUTE_API_CALLS) {
+                console.warn(
+                  "Osiągnięto limit zapytań o trasy w tej sesji."
+                );
+                continue;
+              }
+
+              routeApiCalls++;
+
+              const result = await Route.computeRoutes(request);
+
+              if (
+                cancelled ||
+                currentCalculationId !== calculationIdRef.current
+              ) {
+                return;
+              }
+
+              if (!result.routes || result.routes.length === 0) {
+                continue;
+              }
+
+              const apiRoute = result.routes[0];
+
+              route = apiRoute as unknown as RouteLike;
+
+              if (apiRoute.path && apiRoute.path.length > 1) {
+                routeCache.set(cacheKey, {
+                  distanceMeters: apiRoute.distanceMeters ?? 0,
+                  durationMillis: apiRoute.durationMillis ?? 0,
+                  path: apiRoute.path.map((point) => ({
+                    lat: point.lat,
+                    lng: point.lng,
+                  })),
+                });
+              }
             }
-
-            if (
-              !result.routes ||
-              result.routes.length === 0
-            ) {
-              continue;
-            }
-
-            const route =
-              result.routes[0];
 
             // ==================================================
             // STATS
