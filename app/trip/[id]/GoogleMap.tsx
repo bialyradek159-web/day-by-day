@@ -53,6 +53,18 @@ type RouteStats = {
   segments: SegmentStats[];
 };
 
+type Attraction = {
+  id: string;
+  name: string;
+  region: string | null;
+  category: string;
+  lat: number;
+  lng: number;
+  importance: number;
+  description: string | null;
+  google_place_id: string | null;
+  illustration_url: string | null;
+};
 type GoogleMapProps = {
   places: Place[];
 
@@ -89,6 +101,13 @@ type GoogleMapProps = {
     segmentIndex: number
   ) => void;
 
+    attractions?: Attraction[];
+
+  showAttractions?: boolean;
+
+  onAttractionAdd?: (
+    attraction: Attraction
+  ) => void;
   onPlaceReorder?: (
     dayNumber: number,
     fromIndex: number,
@@ -148,6 +167,9 @@ export default function GoogleMap({
   onRoutePointChange,
   onRoutePointRemove,
   onPlaceReorder,
+    attractions = [],
+  showAttractions = true,
+  onAttractionAdd,
 }: GoogleMapProps) {
   // ==========================================================
   // STATE
@@ -198,6 +220,13 @@ export default function GoogleMap({
   const onRoutePointRemoveRef =
     useRef(onRoutePointRemove);
 
+    const onAttractionAddRef =
+    useRef(onAttractionAdd);
+
+  useEffect(() => {
+    onAttractionAddRef.current =
+      onAttractionAdd;
+  }, [onAttractionAdd]);
   const onPlaceReorderRef =
     useRef(onPlaceReorder);
 
@@ -1387,6 +1416,182 @@ export default function GoogleMap({
     routePoints,
   ]);
 
+    // ==========================================================
+  // ATTRACTIONS LAYER
+  // ==========================================================
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!mapReady || !map) {
+      return;
+    }
+
+    let cancelled = false;
+    let infoWindow: google.maps.InfoWindow | null = null;
+    let zoomListener: google.maps.MapsEventListener | null = null;
+
+    const created: google.maps.marker.AdvancedMarkerElement[] = [];
+
+    const CATEGORY_ICONS: Record<string, string> = {
+      nature: "🏞️",
+      viewpoint: "🔭",
+      museum: "🏛️",
+      beach: "🏖️",
+      city: "🏙️",
+      sight: "📍",
+    };
+
+    function minZoomFor(importance: number) {
+      if (importance <= 1) return 0;
+      if (importance === 2) return 6;
+      return 8;
+    }
+
+    async function drawAttractions() {
+      if (!showAttractions || attractions.length === 0) {
+        return;
+      }
+
+      const { AdvancedMarkerElement } =
+        (await importLibrary(
+          "marker"
+        )) as google.maps.MarkerLibrary;
+
+      if (cancelled || !map) {
+        return;
+      }
+
+      infoWindow = new google.maps.InfoWindow();
+
+      const entries: {
+        marker: google.maps.marker.AdvancedMarkerElement;
+        minZoom: number;
+      }[] = [];
+
+      for (const attraction of attractions) {
+        const el = document.createElement("div");
+
+        el.style.cssText =
+          "width:40px;height:40px;border-radius:9999px;background:white;" +
+          "border:3px solid #f59e0b;box-shadow:0 2px 6px rgba(0,0,0,.35);" +
+          "display:flex;align-items:center;justify-content:center;" +
+          "font-size:20px;overflow:hidden;cursor:pointer;";
+
+        if (attraction.illustration_url) {
+          const img = document.createElement("img");
+          img.src = attraction.illustration_url;
+          img.alt = attraction.name;
+          img.style.cssText =
+            "width:100%;height:100%;object-fit:cover;";
+          el.appendChild(img);
+        } else {
+          el.textContent =
+            CATEGORY_ICONS[attraction.category] ?? "📍";
+        }
+
+        const marker = new AdvancedMarkerElement({
+          map,
+          position: {
+            lat: attraction.lat,
+            lng: attraction.lng,
+          },
+          title: attraction.name,
+          content: el,
+          zIndex: 1,
+        });
+
+        marker.addListener("click", () => {
+          if (!infoWindow) return;
+
+          const card = document.createElement("div");
+          card.style.cssText =
+            "max-width:240px;font-family:system-ui,sans-serif;";
+
+          const title = document.createElement("div");
+          title.textContent = attraction.name;
+          title.style.cssText =
+            "font-weight:700;font-size:15px;color:#0f172a;";
+          card.appendChild(title);
+
+          if (attraction.region) {
+            const region = document.createElement("div");
+            region.textContent = attraction.region;
+            region.style.cssText =
+              "font-size:12px;color:#64748b;margin-top:2px;";
+            card.appendChild(region);
+          }
+
+          if (attraction.description) {
+            const desc = document.createElement("p");
+            desc.textContent = attraction.description;
+            desc.style.cssText =
+              "font-size:13px;color:#334155;margin:8px 0 0;";
+            card.appendChild(desc);
+          }
+
+          if (!showAllDays && onAttractionAddRef.current) {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.textContent = "+ Dodaj do dnia";
+            button.style.cssText =
+              "margin-top:10px;width:100%;padding:8px 12px;border:0;" +
+              "border-radius:8px;background:#2563eb;color:white;" +
+              "font-weight:600;cursor:pointer;";
+            button.addEventListener("click", () => {
+              onAttractionAddRef.current?.(attraction);
+              infoWindow?.close();
+            });
+            card.appendChild(button);
+          }
+
+          infoWindow.setContent(card);
+          infoWindow.open({ map, anchor: marker });
+        });
+
+        created.push(marker);
+
+        entries.push({
+          marker,
+          minZoom: minZoomFor(attraction.importance),
+        });
+      }
+
+      function updateVisibility() {
+        const zoom = map?.getZoom() ?? 0;
+
+        for (const entry of entries) {
+          entry.marker.map =
+            zoom >= entry.minZoom ? map : null;
+        }
+      }
+
+      updateVisibility();
+
+      zoomListener = map.addListener(
+        "zoom_changed",
+        updateVisibility
+      );
+    }
+
+    void drawAttractions();
+
+    return () => {
+      cancelled = true;
+
+      zoomListener?.remove();
+      infoWindow?.close();
+
+      for (const marker of created) {
+        marker.map = null;
+      }
+    };
+  }, [
+    mapReady,
+    attractions,
+    showAttractions,
+    showAllDays,
+  ]);
   // ==========================================================
   // UNMOUNT
   // ==========================================================
