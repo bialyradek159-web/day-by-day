@@ -1595,6 +1595,9 @@ export default function GoogleMap({
     // ==========================================================
   // COUNTRY FLAGS LAYER
   // ==========================================================
+  // ==========================================================
+  // COUNTRY FLAGS LAYER
+  // ==========================================================
 
   useEffect(() => {
     const map = mapRef.current;
@@ -1644,7 +1647,62 @@ export default function GoogleMap({
         label.style.cssText =
           "font:700 13px system-ui,sans-serif;letter-spacing:.08em;" +
           "color:#ea580c;white-space:nowrap;" +
-          "text-shadow:-1px -1px 0 #fff,1px -1px 0
+          "text-shadow:-1px -1px 0 #fff,1px -1px 0 #fff," +
+          "-1px 1px 0 #fff,1px 1px 0 #fff;";
+        el.appendChild(label);
+
+        const marker = new AdvancedMarkerElement({
+          map,
+          position: {
+            lat: country.lat,
+            lng: country.lng,
+          },
+          title: country.name,
+          content: el,
+          zIndex: 0,
+        });
+
+        marker.addListener("click", () => {
+          map.setCenter({
+            lat: country.lat,
+            lng: country.lng,
+          });
+          map.setZoom(6);
+        });
+
+        created.push(marker);
+      }
+
+      function updateVisibility() {
+        const zoom = map?.getZoom() ?? 0;
+        const visible = zoom <= MAX_ZOOM_FOR_FLAGS;
+
+        for (const marker of created) {
+          marker.map = visible ? map : null;
+        }
+      }
+
+      updateVisibility();
+
+      zoomListener = map.addListener(
+        "zoom_changed",
+        updateVisibility
+      );
+    }
+
+    void drawCountryFlags();
+
+    return () => {
+      cancelled = true;
+
+      zoomListener?.remove();
+
+      for (const marker of created) {
+        marker.map = null;
+      }
+    };
+  }, [mapReady]);
+ 
   // ==========================================================
   // UNMOUNT
   // ==========================================================
