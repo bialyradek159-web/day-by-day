@@ -124,7 +124,18 @@ type SupabaseRoutePoint = {
   lat: number;
   lng: number;
 };
-
+type Attraction = {
+  id: string;
+  name: string;
+  region: string | null;
+  category: string;
+  lat: number;
+  lng: number;
+  importance: number;
+  description: string | null;
+  google_place_id: string | null;
+  illustration_url: string | null;
+};
 const supabase = createClient();
 
 // ============================================================
@@ -559,7 +570,11 @@ export default function TripPage() {
   ] = useState<string | null>(
     null
   );
+  const [attractions, setAttractions] =
+    useState<Attraction[]>([]);
 
+  const [showAttractions, setShowAttractions] =
+    useState(true);
   const autocompleteContainerRef =
     useRef<HTMLDivElement | null>(
       null
@@ -2316,7 +2331,100 @@ export default function TripPage() {
   // ==========================================================
   // OPEN ADD PLACE
   // ==========================================================
+  useEffect(() => {
+    async function loadAttractions() {
+      const { data, error } = await supabase
+        .from("attractions")
+        .select(
+          "id, name, region, category, lat, lng, importance, description, google_place_id, illustration_url"
+        )
+        .limit(1000);
 
+      if (error) {
+        logSupabaseError(
+          "Błąd pobierania atrakcji:",
+          error
+        );
+        return;
+      }
+
+      setAttractions((data ?? []) as Attraction[]);
+    }
+
+    void loadAttractions();
+  }, []);
+
+  async function addAttractionToDay(
+    attraction: Attraction
+  ) {
+    if (!currentDay || !tripId) {
+      return;
+    }
+
+    const dayId = await getOrCreateDayId(
+      currentDay.day
+    );
+
+    if (!dayId) {
+      return;
+    }
+
+    const newPlace: Place = {
+      id: createUuid(),
+      name: attraction.name,
+      address: attraction.region ?? undefined,
+      lat: attraction.lat,
+      lng: attraction.lng,
+      enabled: true,
+    };
+
+    const { error } = await supabase
+      .from("trip_places")
+      .insert({
+        id: newPlace.id,
+        day_id: dayId,
+        place_id: newPlace.id,
+        name: newPlace.name,
+        address: newPlace.address ?? null,
+        lat: newPlace.lat,
+        lng: newPlace.lng,
+        place_order: currentDay.places.length,
+        visit_time: null,
+        enabled: true,
+      });
+
+    if (error) {
+      logSupabaseError(
+        "Błąd dodawania atrakcji:",
+        error
+      );
+
+      alert(
+        `Nie udało się dodać miejsca.\n\n${
+          error.message ??
+          "Nieznany błąd Supabase."
+        }`
+      );
+
+      return;
+    }
+
+    setDays((previousDays) =>
+      previousDays.map((day) =>
+        day.day === currentDay.day
+          ? {
+              ...day,
+              places: [...day.places, newPlace],
+              routePoints: [],
+            }
+          : day
+      )
+    );
+
+    setRouteStats(null);
+
+    await clearSupabaseRoutePoints(currentDay.day);
+  }
   function openAddPlace() {
     setSelectedPlace(
       null
@@ -3512,6 +3620,16 @@ return (
                 + Dodaj miejsce
               </button>
 
+              <button
+                onClick={() =>
+                  setShowAttractions((value) => !value)
+                }
+                className="mt-3 w-full rounded-xl border border-slate-200 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50"
+              >
+                {showAttractions
+                  ? "Ukryj atrakcje na mapie"
+                  : "Pokaż atrakcje na mapie"}
+              </button>
               {/* ROUTE INFO */}
 
               <div className="mt-5 rounded-xl bg-amber-50 p-4">
@@ -3588,7 +3706,17 @@ return (
             onRoutePointRemove={
               handleRoutePointRemove
             }
+            attractions={
+              attractions
+            }
 
+            showAttractions={
+              showAttractions
+            }
+
+            onAttractionAdd={
+              addAttractionToDay
+            }
             onPlaceReorder={
               reorderActivePlaces
             }
