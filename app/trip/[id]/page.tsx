@@ -3663,7 +3663,7 @@ return (
 
         {/* MAP */}
 
-        <section className="min-h-[700px] overflow-hidden rounded-2xl bg-white shadow-sm">
+        <section className="min-h-[700px] overflow-hidden rounded-2xl bg-white shadow-sm lg:sticky lg:top-6 lg:h-[max(700px,calc(100vh-3rem))] lg:self-start">
 
           <GoogleMap
             places={
