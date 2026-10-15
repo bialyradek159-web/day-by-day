@@ -3195,13 +3195,7 @@ function handleDragEnd(
 
       {/* MAIN */}
 
-      <div
-  className={`grid gap-6 py-6 lg:grid-cols-[390px_1fr] ${
-    showAllDays
-      ? "px-4"
-      : "mx-auto max-w-7xl px-6"
-  }`}
->
+ <div className="grid gap-6 px-4 py-6 lg:grid-cols-[390px_1fr]">
 
         {/* LEFT */}
 
