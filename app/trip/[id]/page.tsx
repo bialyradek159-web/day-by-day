@@ -414,6 +414,20 @@ function formatDuration(
 // ============================================================
 // COMPONENT
 // ============================================================
+const DAY_COLORS = [
+  "#2563eb",
+  "#16a34a",
+  "#f97316",
+  "#9333ea",
+  "#dc2626",
+  "#0891b2",
+  "#ca8a04",
+  "#db2778",
+];
+
+function getDayColor(day: number) {
+  return DAY_COLORS[(day - 1) % DAY_COLORS.length];
+}
 function SortablePlaceList({
   ids,
   onMove,
@@ -3211,7 +3225,8 @@ function handleDragEnd(
                       key={
                         day.day
                       }
-                      className="rounded-xl border border-slate-200 p-4"
+                                            className="rounded-xl border border-l-4 border-slate-200 p-4"
+                      style={{ borderLeftColor: getDayColor(day.day) }}
                     >
 
                       <div className="flex items-start justify-between gap-3">
