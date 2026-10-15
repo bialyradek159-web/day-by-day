@@ -11,7 +11,7 @@ import {
   importLibrary,
   setOptions,
 } from "@googlemaps/js-api-loader";
-
+import { COUNTRY_LABELS } from "./countries";
 // ============================================================
 // TYPES
 // ============================================================
@@ -1592,6 +1592,59 @@ export default function GoogleMap({
     showAttractions,
     showAllDays,
   ]);
+    // ==========================================================
+  // COUNTRY FLAGS LAYER
+  // ==========================================================
+
+  useEffect(() => {
+    const map = mapRef.current;
+
+    if (!mapReady || !map) {
+      return;
+    }
+
+    let cancelled = false;
+    let zoomListener: google.maps.MapsEventListener | null = null;
+
+    const created: google.maps.marker.AdvancedMarkerElement[] = [];
+
+    // Flagi widać, gdy zoom jest mniejszy lub równy tej wartości
+    const MAX_ZOOM_FOR_FLAGS = 5;
+
+    async function drawCountryFlags() {
+      const { AdvancedMarkerElement } =
+        (await importLibrary(
+          "marker"
+        )) as google.maps.MarkerLibrary;
+
+      if (cancelled || !map) {
+        return;
+      }
+
+      for (const country of COUNTRY_LABELS) {
+        const el = document.createElement("div");
+
+        el.style.cssText =
+          "display:flex;flex-direction:column;align-items:center;" +
+          "gap:3px;cursor:pointer;";
+
+        const img = document.createElement("img");
+        img.src = `https://flagcdn.com/w80/${country.code.toLowerCase()}.png`;
+        img.alt = country.name;
+        img.style.cssText =
+          "width:34px;height:auto;border-radius:3px;" +
+          "box-shadow:0 1px 4px rgba(0,0,0,.45);";
+        img.onerror = () => {
+          img.style.display = "none";
+        };
+        el.appendChild(img);
+
+        const label = document.createElement("div");
+        label.textContent = country.name.toUpperCase();
+        label.style.cssText =
+          "font:700 13px system-ui,sans-serif;letter-spacing:.08em;" +
+          "color:#ea580c;white-space:nowrap;" +
+          "text-shadow:-1px -1px 0 #fff,1px -1px 0
   // ==========================================================
   // UNMOUNT
   // ==========================================================
