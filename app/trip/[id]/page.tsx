@@ -14,6 +14,23 @@ import {
   setOptions,
 } from "@googlemaps/js-api-loader";
 
+import type { ReactNode } from "react";
+
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import type { DragEndEvent } from "@dnd-kit/core";
+
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+} from "@dnd-kit/sortable";
+
 import GoogleMap from "./GoogleMap";
 import { createClient } from "@/lib/supabase/client";
 
@@ -386,7 +403,88 @@ function formatDuration(
 // ============================================================
 // COMPONENT
 // ============================================================
+function SortablePlaceList({
+  ids,
+  onMove,
+  children,
+}: {
+  ids: string[];
+  onMove: (activeId: string, overId: string) => void;
+  children: ReactNode;
+}) {
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 4 },
+    })
+  );
 
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={(event: DragEndEvent) => {
+        const { active, over } = event;
+        if (!over || active.id === over.id) return;
+        onMove(String(active.id), String(over.id));
+      }}
+    >
+      <SortableContext
+        items={ids}
+        strategy={verticalListSortingStrategy}
+      >
+        {children}
+      </SortableContext>
+    </DndContext>
+  );
+}
+
+function SortablePlaceItem({
+  id,
+  disabled,
+  children,
+}: {
+  id: string;
+  disabled: boolean;
+  children: ReactNode;
+}) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id, disabled });
+
+  const style = {
+    transform: transform
+      ? `translate3d(${transform.x}px, ${transform.y}px, 0)`
+      : undefined,
+    transition,
+    zIndex: isDragging ? 20 : undefined,
+    opacity: isDragging ? 0.85 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="relative pl-8">
+      {!disabled && (
+        <button
+          type="button"
+          ref={setActivatorNodeRef}
+          {...attributes}
+          {...listeners}
+          className="absolute left-0 top-3 flex h-10 w-8 cursor-grab touch-none items-center justify-center rounded-lg text-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 active:cursor-grabbing"
+          aria-label="Przeciągnij, aby zmienić kolejność"
+          title="Przeciągnij"
+        >
+          ⋮⋮
+        </button>
+      )}
+      {children}
+    </div>
+  );
+}
 export default function TripPage() {
   const params =
     useParams();
@@ -2715,6 +2813,20 @@ function handleDragEnd(
 
   setDraggedPlaceId(null);
 }
+  function handleSortMove(activeId: string, overId: string) {
+  if (!currentDay) return;
+
+  const activeList = currentDay.places.filter(
+    (place) => place.enabled
+  );
+
+  const from = activeList.findIndex((place) => place.id === activeId);
+  const to = activeList.findIndex((place) => place.id === overId);
+
+  if (from < 0 || to < 0) return;
+
+  reorderActivePlaces(currentDay.day, from, to);
+}
   function handleDragEndOld(
     dayNumber: number,
     targetIndex: number
@@ -3144,6 +3256,11 @@ function handleDragEnd(
 
               <div className="mt-6 space-y-0">
 
+  <SortablePlaceList
+  ids={currentDay?.places.map((place) => place.id) ?? []}
+  onMove={handleSortMove}
+>
+
                 {currentDay?.places.map(
                   (
                     place,
@@ -3178,38 +3295,15 @@ function handleDragEnd(
                                 nextActivePlace.name
                           )
                         : undefined;
-
-                    return (
-                      <div
-                        key={
-                          place.id
-                        }
-                      >
-
-                        {/* PLACE */}
+return (
+                    <SortablePlaceItem
+  key={place.id}
+  id={place.id}
+  disabled={!place.enabled}
+>
 
                         <div
-                          draggable={
-                            place.enabled
-                          }
-                          onDragStart={() =>
-                            place.enabled &&
-                            handleDragStart(
-                              place.id
-                            )
-                          }
-                          onDragOver={(
-                            event
-                          ) =>
-                            event.preventDefault()
-                          }
-                          onDrop={() =>
-                            place.enabled &&
-                            handleDragEnd(
-                              currentDay.day,
-                              activeIndex
-                            )
-                          }
+                      
                           className={`group flex items-start gap-3 rounded-xl border p-4 transition ${
                             place.enabled
                               ? "cursor-grab border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm active:cursor-grabbing"
@@ -3385,11 +3479,11 @@ function handleDragEnd(
 
                         )}
 
-                      </div>
+                      </SortablePlaceItem>
                     );
                   }
                 )}
-
+</SortablePlaceList>
                 {currentDay?.places
                   .length ===
                   0 && (
