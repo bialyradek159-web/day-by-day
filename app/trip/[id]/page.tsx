@@ -1596,7 +1596,7 @@ export default function TripPage() {
       stats
     );
 
-    if (!stats) {
+            if (!stats || !showAllDays) {
       return;
     }
 
