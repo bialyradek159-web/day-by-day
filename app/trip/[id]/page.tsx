@@ -2651,7 +2651,71 @@ export default function TripPage() {
     );
   }
 
-  function handleDragEnd(
+  function reorderActivePlaces(
+  dayNumber: number,
+  fromIndex: number,
+  toIndex: number
+) {
+  if (fromIndex === toIndex) return;
+
+  const day = days.find((item) => item.day === dayNumber);
+  if (!day) return;
+
+  const active = day.places.filter((place) => place.enabled);
+
+  if (
+    !active[fromIndex] ||
+    toIndex < 0 ||
+    toIndex >= active.length
+  ) {
+    return;
+  }
+
+  const reordered = [...active];
+  const [moved] = reordered.splice(fromIndex, 1);
+  if (!moved) return;
+  reordered.splice(toIndex, 0, moved);
+
+  let i = 0;
+  const places = day.places.map((place) =>
+    place.enabled ? (reordered[i++] ?? place) : place
+  );
+
+  setDays((previousDays) =>
+    previousDays.map((item) =>
+      item.day === dayNumber
+        ? { ...item, places, routePoints: [] }
+        : item
+    )
+  );
+
+  setRouteStats(null);
+
+  void savePlaceOrder(dayNumber, places);
+  void clearSupabaseRoutePoints(dayNumber);
+}
+
+function handleDragEnd(
+  dayNumber: number,
+  targetIndex: number
+) {
+  if (!draggedPlaceId) return;
+
+  const day = days.find((item) => item.day === dayNumber);
+  const activeList =
+    day?.places.filter((place) => place.enabled) ?? [];
+
+  const sourceIndex = activeList.findIndex(
+    (place) => place.id === draggedPlaceId
+  );
+
+  if (sourceIndex >= 0) {
+    reorderActivePlaces(dayNumber, sourceIndex, targetIndex);
+  }
+
+  setDraggedPlaceId(null);
+}
+  function handleDragEndOld(
     dayNumber: number,
     targetIndex: number
   ) {
@@ -3158,10 +3222,7 @@ export default function TripPage() {
                               ? "bg-blue-100 text-blue-700"
                               : "bg-slate-200 text-slate-500"
                           }`}>
-                            {
-                              index +
-                              1
-                            }
+                            {place.enabled ? activeIndex + 1 : "–"}
                           </div>
 
                           <div className="min-w-0 flex-1">
@@ -3435,7 +3496,7 @@ export default function TripPage() {
             }
 
             onPlaceReorder={
-              handlePlaceReorder
+              reorderActivePlaces
             }
           />
 
