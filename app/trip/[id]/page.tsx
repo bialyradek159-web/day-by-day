@@ -3049,7 +3049,7 @@ function handleDragEnd(
       {/* HEADER */}
 
       <header className="border-b bg-white">
-        <div className="mx-auto max-w-7xl px-6 py-5">
+        <div className="mx-auto max-w-7xl px-4 py-5">
 
           <div className="flex items-center justify-between gap-6">
 
@@ -3124,7 +3124,7 @@ function handleDragEnd(
 
       <div className="border-b bg-white">
 
-        <div className="mx-auto max-w-7xl overflow-x-auto px-6">
+        <div className="mx-auto max-w-7xl overflow-x-auto px-4">
 
           <div className="flex gap-2 py-4">
 
@@ -3743,7 +3743,7 @@ return (
 
       {/* FOOTER */}
 
-      <div className="mx-auto max-w-7xl px-6 pb-8">
+      <div className="mx-auto max-w-7xl px-4 pb-8">
 
         <div className="grid gap-4 md:grid-cols-3">
 
